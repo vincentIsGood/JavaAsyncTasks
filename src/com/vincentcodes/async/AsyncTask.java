@@ -18,6 +18,7 @@ public final class AsyncTask<T> {
     private AsyncTaskState state;
 
     private boolean waitForResult = false;
+    private boolean resolveRejectDone = false;
 
     /**
      * @param callback takes resolve, reject function pointers as argument
@@ -56,9 +57,17 @@ public final class AsyncTask<T> {
      * Finally, tasks are executed in the following order: task1 -> task2 -> task3.
      */
     public <R> AsyncTask<R> then(Function<T,R> thenCallback, Function<Object,Object> catchCallback){
+        // AsyncTask.then.then  =>  "new async" -> resolve -> "new async" -> resolve
+        //
+        // This is where you can see AsyncTask2 ref AsyncTask1
+        // the following shows AsyncTask1 then/catch callback is set after resolve
+        //
+        // when AsyncTask is created, the following thing happens (#callMain(callback))
         return new AsyncTask<>((resolve, reject) -> {
-            // set the callbacks to the parent callback (don't get confused.)
-            // add everything in parallel (ie. add one func to each of then/catch queue)
+            // AsyncTask1 stuff is IN AsynTask2
+            // AsyncTask2.resolve(result) is called automatically
+            //
+            // Data flow: AsyncTask1.result -> AsyncTask2.thenCallback(result)
             this.thenCallback = result -> {
                 // ie. if we have catchCallback. Then, skip catch (call resolve() to skip it)
                 if(thenCallback == null){
@@ -83,7 +92,7 @@ public final class AsyncTask<T> {
                 }
             };
             
-            // run the parent's callbacks we JUST added up there.
+            // run the new then&catch callback AsyncTask1 we JUST added up there.
             runThenOrCatchCallback();
         });
     }
@@ -99,9 +108,11 @@ public final class AsyncTask<T> {
     public T await(){
         // we'll wait for the async task to finish as defined in resolve / reject
         waitForResult = true;
-        while(waitForResult){
+        while(waitForResult && !resolveRejectDone){
             synchronized(this){
                 try{
+                    // Wanna make sure we break
+                    if(resolveRejectDone) break;
                     this.wait();
                 }catch(InterruptedException e){
                     Thread.currentThread().interrupt();
@@ -144,6 +155,7 @@ public final class AsyncTask<T> {
             runThenOrCatchCallback();
 
             synchronized(this){
+                resolveRejectDone = true;
                 if(waitForResult){
                     waitForResult = false;
                     this.notify();
@@ -161,6 +173,7 @@ public final class AsyncTask<T> {
             runThenOrCatchCallback();
             
             synchronized(this){
+                resolveRejectDone = true;
                 if(waitForResult){
                     waitForResult = false;
                     this.notify();

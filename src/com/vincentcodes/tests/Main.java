@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 import com.vincentcodes.async.AsyncTask;
+import com.vincentcodes.async.EventLoop;
 
 /**
  * Tbh, I should not do manual testings after the main functionalities have 
@@ -15,6 +16,7 @@ public class Main {
     public static void main(String[] args) throws InterruptedException {
         // check_real_async();
         test_await_should_return_value();
+        EventLoop.EVENT_LOOP.stop();
     }
 
     private static void test_basic(){
@@ -85,19 +87,19 @@ public class Main {
             intArr[0] = 100;
             return intArr;
         }).await();
-        printDebug(Arrays.toString(result));
+        print(Arrays.toString(result));
         
         int[] result2 = new AsyncTask<int[]>((resolve, reject)->{
             resolve.accept(IntStream.range(0, 20).toArray());
         }).then(intArr -> {
             for(int i : (int[])intArr){
-                printDebug("task1: " + i);
+                printDebug("task2: " + i);
             }
             printDebug("I'm done");
             intArr[0] = 100;
             return intArr;
         }).await();
-        printDebug(Arrays.toString(result2));
+        print(Arrays.toString(result2));
 
         String resultStr = new AsyncTask<String[]>((resolve, reject)->{
             resolve.accept(new String[]{"I am vincent"});
@@ -105,11 +107,15 @@ public class Main {
         .then(str -> str.substring(5))
         .then(str -> str += " is shit")
         .await();
-        printDebug(resultStr);
+        print(resultStr);
+    }
+
+    private static void print(String msg){
+        System.out.println(msg);
     }
 
     private static void printDebug(String msg){
         if(!suppressLog)
-            System.out.println(msg);
+            System.out.println("Debug: " + msg);
     }
 }
