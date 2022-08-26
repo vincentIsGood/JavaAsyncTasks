@@ -15,7 +15,8 @@ public class Main {
 
     public static void main(String[] args) throws InterruptedException {
         // check_real_async();
-        test_await_should_return_value();
+        // test_await_should_return_value();
+        test_multiple_long_chains();
         EventLoop.EVENT_LOOP.stop();
     }
 

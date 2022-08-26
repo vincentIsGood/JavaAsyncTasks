@@ -57,7 +57,7 @@ public final class AsyncTask<T> {
      * Finally, tasks are executed in the following order: task1 -> task2 -> task3.
      */
     public <R> AsyncTask<R> then(Function<T,R> thenCallback, Function<Object,Object> catchCallback){
-        // AsyncTask.then.then  =>  "new async" -> resolve -> "new async" -> resolve
+        // AsyncTask.then.then  =>  "new async" -> resolve -> "new async" -> resolve -> "new async"
         //
         // This is where you can see AsyncTask2 ref AsyncTask1
         // the following shows AsyncTask1 then/catch callback is set after resolve
