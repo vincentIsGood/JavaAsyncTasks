@@ -13,8 +13,8 @@ public final class AsyncTask<T> {
      * Result of the current task
      */
     private Object result;
-    private Consumer<Object> thenCallback;
-    private Consumer<Object> catchCallback;
+    private Consumer<Object> wrapperThenCallback;
+    private Consumer<Object> wrapperCatchCallback;
     private AsyncTaskState state;
 
     private boolean waitForResult = false;
@@ -57,18 +57,23 @@ public final class AsyncTask<T> {
      * Finally, tasks are executed in the following order: task1 -> task2 -> task3.
      */
     public <R> AsyncTask<R> then(Function<T,R> thenCallback, Function<Object,Object> catchCallback){
-        // AsyncTask.then.then  =>  "new async" -> resolve -> "new async" -> resolve -> "new async"
+        // New explanation. If you are not sure how the chains are called, use StringBuilder once.
         //
-        // This is where you can see AsyncTask2 ref AsyncTask1
-        // the following shows AsyncTask1 then/catch callback is set after resolve
-        //
-        // when AsyncTask is created, the following thing happens (#callMain(callback))
+        // 1. AsyncTask() does callMain() to run "callback" we just passed into constructor
+        // 1.1. the result is passed to the next AsyncTask by resolve()
+        // 1.2. resolve() uses another thread to run runThenOrCatchCallback()
+        // 2. Another thread is doing its job, then() creates a new AsyncTask(), which then does callMain() and setup (old AsynTask's) "this.wrapperCallbacks"
+        //    Note: the old AsyncTask's "this.wrapperCallbacks" will be "null" until a new AsyncTask is created
+        // 2.1. new AsyncTask will make sure previous tasks are done by calling runThenOrCatchCallback() again
+        // 3. Old AsyncTask's "this.wrapperCallbacks" is done by either "Another Thread" or "New AsyncTask (this thread)"
+        //    New AsyncTask's resolve() is called by the new callback given by user.
+        // 4. Repeat (2)
         return new AsyncTask<>((resolve, reject) -> {
             // AsyncTask1 stuff is IN AsynTask2
             // AsyncTask2.resolve(result) is called automatically
             //
             // Data flow: AsyncTask1.result -> AsyncTask2.thenCallback(result)
-            this.thenCallback = result -> {
+            this.wrapperThenCallback = result -> {
                 // ie. if we have catchCallback. Then, skip catch (call resolve() to skip it)
                 if(thenCallback == null){
                     resolve.accept((R)result);
@@ -80,7 +85,7 @@ public final class AsyncTask<T> {
                 }
             };
 
-            this.catchCallback = result -> {
+            this.wrapperCatchCallback = result -> {
                 // ie. skip the then-callback
                 if(catchCallback == null){
                     reject.accept(result);
@@ -92,7 +97,8 @@ public final class AsyncTask<T> {
                 }
             };
             
-            // run the new then&catch callback AsyncTask1 we JUST added up there.
+            // IF another thread did the heavy lifting for us, this.runThenOrCatchCallback() is useless
+            // Important: Make sure old AsyncTask is done before invoking the new AsyncTask
             runThenOrCatchCallback();
         });
     }
@@ -116,7 +122,6 @@ public final class AsyncTask<T> {
                     this.wait();
                 }catch(InterruptedException e){
                     Thread.currentThread().interrupt();
-                    System.out.println("Thread interrupted");
                 }
             }
         }
@@ -139,16 +144,16 @@ public final class AsyncTask<T> {
 
     private void runThenOrCatchCallback(){
         // `null` when this AsyncTask is the last one in the chain
-        if(this.state == AsyncTaskState.FULFILLED && thenCallback != null){
-            thenCallback.accept(result);
-        }else if(this.state == AsyncTaskState.REJECTED && catchCallback != null)
-            catchCallback.accept(result);
+        if(this.state == AsyncTaskState.FULFILLED && wrapperThenCallback != null){
+            wrapperThenCallback.accept(result);
+        }else if(this.state == AsyncTaskState.REJECTED && wrapperCatchCallback != null)
+            wrapperCatchCallback.accept(result);
     }
     
     // ----------- In one task, we either have RESOLVE or REJECT ----------- //
     private void resolve(Object result){
         EventLoop.EVENT_LOOP.submit(()->{
-            // we do want multiple RESOLVE / REJECTED to run this code.
+            // If it's FULFILLED / REJECTED, don't run this code again
             if(state != AsyncTaskState.PENDING) return;
             this.result = result;
             state = AsyncTaskState.FULFILLED;

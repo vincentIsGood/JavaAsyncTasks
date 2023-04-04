@@ -41,6 +41,7 @@ public class Main {
             printDebug(str.substring(5));
             return null;
         });
+        task.await();
     }
 
     private static void test_exception_oncreate(){
